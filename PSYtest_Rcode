@@ -1,0 +1,115 @@
+# Jinlan,22/12/2023
+# PSY test
+
+####################################################################
+
+# Remove all items from memory (if any)
+rm(list=ls(all=TRUE))
+
+# Set the working directory to load files
+setwd("D:/KCL/Revision/BigData/test")
+
+
+####################################################################
+# PSY - Bubbles Detection & Crises Identification
+####################################################################
+
+# DATAFILES DESCRIPTION
+# -----------------------------
+#
+# USmonthly.csv
+# YIELD10:    US Government 10 Year Yield
+# YIELD3:     US Government 3 Month Yield
+#
+# Calculate and use the spread: [ YIELD10  -  YIELD3]
+# https://www.newyorkfed.org/research/capital_markets/ycfaq.html#/
+
+# Install/load the PSY package
+# install.packages("psymonitor")---------not valid now 
+
+# download package from github:https://github.com/itamarcaspi/psymonitor?tab=readme-ov-file
+# install.packages("devtools")
+# devtools::install_github("itamarcaspi/psymonitor")
+
+library(psymonitor)
+library(readxl)
+
+# Load data
+# change variable names in xls:10 Year Treasury Yield->Yield10Year/3 Month Treasury Yield->Yield3Month
+
+data <- read_excel("allmonth.xls")
+
+##All column names
+names(data)
+
+## Date format adjust
+date <- as.Date(data$Date)
+
+# Create the Spread
+y <- data$Yield10Year -  data$Yield3Monthy
+y <- na.omit(y) 
+
+#test<-cbind(data$YIELD10,data$YIELD3,y)
+
+# Make a first plot of the series
+plot(date, y, type="l", main="10Y - 3M", lwd=2)
+
+# The sample size is
+N <- NROW(y)
+
+# Set the min window size
+minwin <-floor((0.01+1.8/sqrt(N))*N)
+
+# Calculate the recursive ADF
+# To make it quicker set the lags in ADF
+# otherwise you can select them by AIC or BIC
+
+# PSY(y, swindow0, IC = 0, adflag = 0) parameter:
+# from:https://github.com/itamarcaspi/psymonitor?tab=readme-ov-file
+# parameter 
+# y:  A vector. The data.
+# swindow0:A positive integer. Minimum window size 
+# IC: An integer. 0 for fixed lag order (default), 1 for AIC and 2 for BIC (default = 0).
+# adflag: An integer, lag order when IC=0; maximum number of lags when IC>0 (default = 0).
+
+plags <- 1
+ADF <- PSY(y, swindow0=minwin, IC=0, adflag=plags)
+
+print(date[minwin:N])
+print(data)
+
+# Plot the ADF
+plot(date[minwin:N], ADF, main="ADF", type="l", pch=15, col="blue", lwd=2)
+print(ADF)
+
+
+# Use bootstrap and calculate the p-values
+qADF <- cvPSYwmboot(y, swindow0=minwin, IC=0, adflag=plags,Tb=minwin, nboot=300)
+print(qADF)
+
+par(mfrow=c(1,1))
+# Now plot the ADF and the critical value of 90% (blue), 95% (green), 99% (red)
+plot(date[minwin:N], ADF, main="ADF", type="l", pch=15, col="blue", lwd=2)
+abline(h=qADF[1], col="blue")
+abline(h=qADF[2], col="green")
+abline(h=qADF[3], col="red")
+
+# Use the 90% critical value --> choose 1
+# Use the 95% critical value --> choose 2
+# Use the 99% critical value --> choose 3
+# choose significance level
+alpha.level <- 2
+
+
+aser <- rep(qADF[alpha.level], NROW(ADF))
+
+
+# check
+check <- (ADF>aser)
+
+plot(date[minwin:N], y[minwin:N], type="l",lwd=3, main="10Y - 3M")
+for(i in 1:NROW(check)){
+  if(check[i]==TRUE){
+    abline(v=date[minwin:N][i], col="blue")
+  }
+}
